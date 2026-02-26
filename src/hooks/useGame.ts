@@ -25,16 +25,25 @@ function shuffle(array: any[]) {
 
 const INITIAL_HAND_SIZE = 5;
 
+export function getCardScore(card: CardType): number {
+  if (card.rank === '8') return 50;
+  if (['K', 'Q', 'J'].includes(card.rank)) return 10;
+  if (card.rank === 'A') return 1;
+  return parseInt(card.rank, 10);
+}
+
+const TARGET_SCORE = 100;
+
 export function useGame() {
   const [gameState, setGameState] = useState<GameState>(() => initGame());
 
-  function initGame(): GameState {
+  function initGame(existingPlayers?: Player[], round: number = 1): GameState {
     let deck = createDeck();
-    const players: Player[] = [
-      { id: 'p1', name: 'You', isHuman: true, hand: [] },
-      { id: 'p2', name: 'Bot 1', isHuman: false, hand: [] },
-      { id: 'p3', name: 'Bot 2', isHuman: false, hand: [] },
-      { id: 'p4', name: 'Bot 3', isHuman: false, hand: [] },
+    const players: Player[] = existingPlayers ? existingPlayers.map(p => ({ ...p, hand: [] })) : [
+      { id: 'p1', name: 'You', isHuman: true, hand: [], score: 0 },
+      { id: 'p2', name: 'Bot 1', isHuman: false, hand: [], score: 0 },
+      { id: 'p3', name: 'Bot 2', isHuman: false, hand: [], score: 0 },
+      { id: 'p4', name: 'Bot 3', isHuman: false, hand: [], score: 0 },
     ];
 
     for (let i = 0; i < INITIAL_HAND_SIZE; i++) {
@@ -58,15 +67,22 @@ export function useGame() {
       activeSuit: firstCard.suit,
       drawPenalty: 0,
       winner: null,
+      roundWinner: null,
       status: 'playing',
-      message: 'Game started! Your turn.',
+      message: `Round ${round} started! Your turn.`,
       pendingCard: null,
       hasDrawnThisTurn: false,
+      round,
+      lastRoundPenalties: {},
     };
   }
 
   const resetGame = useCallback(() => {
     setGameState(initGame());
+  }, []);
+
+  const nextRound = useCallback(() => {
+    setGameState(prev => initGame(prev.players, prev.round + 1));
   }, []);
 
   const drawCards = (deck: CardType[], discardPile: CardType[], count: number) => {
@@ -128,14 +144,33 @@ export function useGame() {
       newPlayers[prev.currentPlayerIndex] = { ...player, hand: newHand };
 
       if (newHand.length === 0) {
+        const penalties: Record<string, number> = {};
+        const finalPlayers = newPlayers.map(p => {
+          if (p.id === player.id) {
+            penalties[p.id] = 0;
+            return p;
+          }
+          const penalty = p.hand.reduce((sum, c) => sum + getCardScore(c), 0);
+          penalties[p.id] = penalty;
+          return { ...p, score: p.score + penalty };
+        });
+
+        const isGameOver = finalPlayers.some(p => p.score >= TARGET_SCORE);
+        let overallWinner = null;
+        if (isGameOver) {
+          overallWinner = finalPlayers.reduce((min, p) => p.score < min.score ? p : min).name;
+        }
+
         return {
           ...prev,
-          players: newPlayers,
+          players: finalPlayers,
           discardPile: [...prev.discardPile, card],
           activeSuit: selectedSuit || card.suit,
-          winner: player.name,
-          status: 'game-over',
-          message: `${player.name} wins!`,
+          roundWinner: player.name,
+          winner: overallWinner,
+          status: isGameOver ? 'game-over' : 'round-over',
+          message: isGameOver ? `Game Over! ${overallWinner} wins the game!` : `${player.name} won round ${prev.round}!`,
+          lastRoundPenalties: penalties,
         };
       }
 
@@ -240,6 +275,7 @@ export function useGame() {
     handleDraw,
     passTurn,
     resetGame,
+    nextRound,
     isValidPlay,
   };
 }

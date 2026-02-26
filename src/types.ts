@@ -12,6 +12,7 @@ export interface Player {
   name: string;
   isHuman: boolean;
   hand: CardType[];
+  score: number;
 }
 
 export interface GameState {
@@ -23,8 +24,11 @@ export interface GameState {
   activeSuit: Suit;
   drawPenalty: number;
   winner: string | null;
-  status: 'playing' | 'suit-selection' | 'game-over';
+  roundWinner: string | null;
+  status: 'playing' | 'suit-selection' | 'round-over' | 'game-over';
   message: string;
   pendingCard: CardType | null;
   hasDrawnThisTurn: boolean;
+  round: number;
+  lastRoundPenalties: Record<string, number>;
 }
